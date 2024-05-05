@@ -1,6 +1,7 @@
-#define _GNU_SOURCE
+#define _BSD_SOURCE
 #include <stdlib.h>
 #include <errno.h>
+#include <crypt.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -269,14 +270,16 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 			running = !!strcmp(inputhash, hash);
 		if (running)
 			state = FAILED;
-		memset(&pw, 0, sizeof(pw));
+		explicit_bzero(&pw.input, sizeof(pw.input));
+		pw.len = 0;
 		break;
 	case XKB_KEY_BackSpace:
 		if (pw.len)
 			pw.input[--pw.len] = '\0';
 		break;
 	case XKB_KEY_Escape:
-		memset(&pw, 0, sizeof(pw));
+		explicit_bzero(&pw.input, sizeof(pw.input));
+		pw.len = 0;
 		break;
 	default:
 		state = INPUT;
