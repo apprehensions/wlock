@@ -1,31 +1,29 @@
 #define _BSD_SOURCE
-#include <stdlib.h>
-#include <errno.h>
 #include <crypt.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <stdbool.h>
-#include <poll.h>
-#include <string.h>
 #include <err.h>
+#include <errno.h>
 #include <getopt.h>
-#include <shadow.h>
-#include <unistd.h>
+#include <limits.h>
+#include <poll.h>
 #include <pwd.h>
-#include <sys/timerfd.h>
+#include <shadow.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string.h>
 #include <sys/mman.h>
+#include <sys/mman.h>
+#include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
-#include <stdio.h>
-#include <sys/mman.h>
-#include <string.h>
-#include <xkbcommon/xkbcommon.h>
+#include <unistd.h>
 #include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "ext-session-lock-v1-protocol.h"
-#include "viewporter-protocol.h"
 #include "single-pixel-buffer-v1-protocol.h"
+#include "viewporter-protocol.h"
 
 #define LENGTH(X) (sizeof(X) / sizeof((X)[0]))
 
@@ -81,8 +79,6 @@ static char *hash;
 
 static bool locked, running;
 
-static int spipe[2] = {-1, -1};
-
 enum state { INIT, INPUT, FAILED } state = INIT;
 
 static color_t colorname[3] = {
@@ -95,14 +91,6 @@ static void
 noop()
 {
 	// :3c
-}
-
-
-static void
-signal_handler(int s)
-{
-	if (write(spipe[1], "1", 1) < 0)
-		abort();
 }
 
 static color_t
@@ -531,18 +519,8 @@ main(int argc, char *argv[])
 
 	struct pollfd fds[] = {
 		{ wl_display_get_fd(display), POLLIN },
-		{ spipe[0],                   POLLIN },
 		{ keyboard->repeat_timer,     POLLIN },
 	};
-
-	if (pipe(spipe) < 0)
-		errx(EXIT_FAILURE, "pipe");
-
-	struct sigaction sa = {0};
-	sa.sa_handler = signal_handler;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART;
-	sigaction(SIGUSR1, &sa, NULL);
 
 	running = true;
 	while (running) {
@@ -550,7 +528,7 @@ main(int argc, char *argv[])
 			break;
 		
 		errno = 0;
-		if (poll(fds, 3, -1) == -1 && errno != EINTR)
+		if (poll(fds, 2, -1) == -1 && errno != EINTR)
 			err(EXIT_FAILURE, NULL);
 
 		if (fds[0].revents & POLLIN)
@@ -560,9 +538,6 @@ main(int argc, char *argv[])
 			errx(EXIT_FAILURE, "wayland socket disconnect");
 
 		if (fds[1].revents & POLLIN)
-			running = false;
-
-		if (fds[2].revents & POLLIN)
 			keyboard_repeat();
 	}
 
