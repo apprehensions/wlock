@@ -21,7 +21,6 @@
 #include <string.h>
 #include <xkbcommon/xkbcommon.h>
 #include <wayland-client.h>
-#include <wlr/util/log.h>
 
 #include "ext-session-lock-v1-protocol.h"
 #include "viewporter-protocol.h"
@@ -132,8 +131,6 @@ output_frame(struct output *output)
 {
 	color_t c = colorname[state];
 	struct wl_buffer *buffer;
-
-	wlr_log(WLR_DEBUG, "output_frame: %s state %d", output->name, state);
 
 	buffer = wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer(
 		buf_manager, c.r, c.g, c.b, c.a);
@@ -259,8 +256,6 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 	if (key_state != WL_KEYBOARD_KEY_STATE_PRESSED)
 		return;
 
-	wlr_log(WLR_DEBUG, "keyboard_keypress: %d %d %d", key_state, sym);
-
 	switch (sym) {
 	case XKB_KEY_KP_Enter:
 	case XKB_KEY_Return:
@@ -294,8 +289,6 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 	}
 
 	outputs_frame();
-
-	wlr_log(WLR_DEBUG, "passwd(%d): %s", pw.len, pw.input);
 }
 
 static void
@@ -462,7 +455,7 @@ static const struct ext_session_lock_v1_listener lock_listener = {
 static void
 usage()
 {
-	fprintf(stderr, "usage: wlock [-n norm_color] [-i input_color] [-f fail_color]\n");
+	fprintf(stderr, "usage: wlock [-v] [-c init_color] [-f fail_color] [-i input_color]\n");
 	exit(1);
 }
 
@@ -473,22 +466,20 @@ main(int argc, char *argv[])
 	struct spwd *sp;
 	struct passwd *p;
 
-	wlr_log_init(WLR_DEBUG, NULL);
-	wl_list_init(&output_list);
-
-	while ((opt = getopt(argc, argv, "n:i:f:")) != -1) {
+	while ((opt = getopt(argc, argv, "c:f:i:v")) != -1) {
 		switch (opt) {
-		case 'n':
-			colorname[INIT] = strtoclr(strdup(optarg));
-			break;
-		case 'i':
-			colorname[INPUT] = strtoclr(strdup(optarg));
-			break;
+		case 'c':
 		case 'f':
-			colorname[FAILED] = strtoclr(strdup(optarg));
+		case 'i':
+			colorname[opt == 'f' ? FAILED : opt == 'i' ? INPUT : INIT] = strtoclr(optarg);
 			break;
+		case 'v':
+			puts("wlock " VERSION);
+			return EXIT_SUCCESS;
 		}
 	}
+	if (optind < argc)
+		usage();
 
 	if (!(p = getpwuid(getuid())))
 		err(EXIT_FAILURE, NULL);
@@ -505,6 +496,8 @@ main(int argc, char *argv[])
 		err(EXIT_FAILURE, NULL);
 	if (setuid(0) > 0 || setgid(0) > 0)
 		errx(EXIT_FAILURE, "failed to drop root (able to restore root)");
+
+	wl_list_init(&output_list);
 
 	display = wl_display_connect(NULL);
 	if (!display)
