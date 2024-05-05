@@ -29,7 +29,7 @@
 #define LENGTH(X) (sizeof(X) / sizeof((X)[0]))
 
 typedef struct {
-	unsigned int r, g, b, a;
+	unsigned int r, g, b;
 } color_t;
 
 static struct keyboard {
@@ -47,7 +47,7 @@ static struct keyboard {
 
 static struct pw {
 	char input[256];
-	char *hash;
+	
 	int len;
 } pw;
 
@@ -76,6 +76,8 @@ static struct ext_session_lock_manager_v1 *lock_manager;
 static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
 static struct wl_list output_list;
 
+static char *hash;
+
 static bool locked, running;
 
 static int spipe[2] = {-1, -1};
@@ -83,9 +85,9 @@ static int spipe[2] = {-1, -1};
 enum state { INIT, INPUT, FAILED } state = INIT;
 
 static color_t colorname[3] = {
-	[INIT]   = { 0x00000000, 0x00000000, 0x00000000, 0xffffffff }, /* after initialization */
-	[INPUT]  = { 0x00000000, 0x55555555, 0x77777777, 0xffffffff }, /* during input */
-	[FAILED] = { 0xcccccccc, 0x33333333, 0x33333333, 0xffffffff }, /* wrong password */
+	[INIT]   = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
+	[INPUT]  = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
+	[FAILED] = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
 };
 
 static void
@@ -109,7 +111,7 @@ strtoclr(const char *color)
 	unsigned int res;
 
 	len = strlen(color);
-	if (len != 8 && len != 10)
+	if (len != 8)
 		errx(EXIT_FAILURE, "invalid color given: %s", color);
 
 	res = strtoul(color, NULL, 16);
@@ -117,7 +119,6 @@ strtoclr(const char *color)
 		res = (res << 8) | 0xFF;
 
 	color_t c = {
-		((res >> 24) & 0xff) * (0xffffffff / 0xff),
 		((res >> 16) & 0xff) * (0xffffffff / 0xff),
 		((res >> 8) & 0xff) * (0xffffffff / 0xff),
 		((res >> 0) & 0xff) * (0xffffffff / 0xff),
@@ -132,8 +133,9 @@ output_frame(struct output *output)
 	color_t c = colorname[state];
 	struct wl_buffer *buffer;
 
+	/* alpha has no effect on this surface */
 	buffer = wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer(
-		buf_manager, c.r, c.g, c.b, c.a);
+		buf_manager, c.r, c.g, c.b, 0xffffffff);
 
 	wl_surface_set_buffer_scale(output->surface, output->scale);
 
@@ -261,10 +263,10 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 	case XKB_KEY_Return:
 		pw.input[pw.len] = '\0';
 		errno = 0;
-		if (!(inputhash = crypt(pw.input, pw.hash)))
+		if (!(inputhash = crypt(pw.input, hash)))
 			warn("crypt:");
 		else
-			running = !!strcmp(inputhash, pw.hash);
+			running = !!strcmp(inputhash, hash);
 		if (running)
 			state = FAILED;
 		memset(&pw, 0, sizeof(pw));
@@ -483,11 +485,11 @@ main(int argc, char *argv[])
 
 	if (!(p = getpwuid(getuid())))
 		err(EXIT_FAILURE, NULL);
-	pw.hash = p->pw_passwd;
-	if (!strcmp(pw.hash, "x")) {
+	hash = p->pw_passwd;
+	if (!strcmp(hash, "x")) {
 		if (!(sp = getspnam(p->pw_name)))
 			errx(EXIT_FAILURE, "getspnam failed, ensure suid & sgid lock");
-		pw.hash = sp->sp_pwdp;
+		hash = sp->sp_pwdp;
 	}
 
 	if (setgid(getgid()) != 0)
