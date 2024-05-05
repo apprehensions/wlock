@@ -2,6 +2,8 @@
 
 VERSION = 0
 
+PREFIX = /usr/local
+
 PKG_CONFIG = pkg-config
 
 PKGS       = wayland-client wayland-cursor wlroots xkbcommon
