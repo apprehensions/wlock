@@ -44,7 +44,7 @@ clean:
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp -f wlock $(DESTDIR)$(PREFIX)/bin
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/wlock
+	chmod 4755 $(DESTDIR)$(PREFIX)/bin/wlock
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/wlock
