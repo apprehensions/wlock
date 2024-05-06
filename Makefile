@@ -42,7 +42,7 @@ viewporter-protocol.h:
 
 clean:
 	rm -f wlock *.o *-protocol.*
-	
+
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp -f wlock $(DESTDIR)$(PREFIX)/bin

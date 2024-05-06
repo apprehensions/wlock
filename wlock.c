@@ -46,7 +46,6 @@ static struct keyboard {
 
 static struct pw {
 	char input[256];
-	
 	int len;
 } pw;
 
@@ -526,7 +525,7 @@ main(int argc, char *argv[])
 	while (running) {
 		if (wl_display_flush(display) < 0 && errno != EAGAIN)
 			break;
-		
+
 		errno = 0;
 		if (poll(fds, 2, -1) == -1 && errno != EINTR)
 			err(EXIT_FAILURE, NULL);
@@ -546,4 +545,3 @@ main(int argc, char *argv[])
 
 	return 0;
 }
-
