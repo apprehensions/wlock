@@ -6,7 +6,7 @@ PREFIX = /usr/local
 
 PKG_CONFIG = pkg-config
 
-PKGS       = wayland-client wayland-cursor wlroots xkbcommon
+PKGS       = wayland-client xkbcommon
 WLCPPFLAGS = -DVERSION=\"$(VERSION)\"
 WLCFLAGS   = `$(PKG_CONFIG) --cflags $(PKGS)` $(WLCPPFLAGS) $(CFLAGS)
 LDLIBS     = `$(PKG_CONFIG) --libs $(PKGS)`
