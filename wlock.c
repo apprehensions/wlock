@@ -11,12 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <string.h>
-#include <sys/mman.h>
 #include <sys/mman.h>
 #include <sys/timerfd.h>
 #include <time.h>
-#include <unistd.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
@@ -29,9 +26,9 @@
 
 typedef struct {
 	unsigned int r, g, b;
-} color_t;
+} Clr;
 
-static struct keyboard {
+static struct {
 	struct wl_keyboard *keyboard;
 	struct xkb_context *context;
 	struct xkb_keymap *keymap;
@@ -44,12 +41,12 @@ static struct keyboard {
 	xkb_keysym_t repeat_sym;
 } *keyboard;
 
-static struct pw {
+static struct {
 	char input[256];
 	int len;
 } pw;
 
-struct output {
+typedef struct {
 	uint32_t wl_name;
 	struct wl_output *wl_output;
 	struct wl_surface *surface;
@@ -62,7 +59,7 @@ struct output {
 	bool created;
 
 	struct wl_list link;
-};
+} Output;
 
 static struct wl_display *display;
 static struct wl_registry *registry;
@@ -80,7 +77,7 @@ static bool locked, running;
 
 enum state { INIT, INPUT, FAILED } state = INIT;
 
-static color_t colorname[3] = {
+static Clr colorname[3] = {
 	[INIT]   = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
 	[INPUT]  = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
 	[FAILED] = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
@@ -92,8 +89,8 @@ noop()
 	// :3c
 }
 
-static color_t
-strtoclr(const char *color)
+static Clr
+parse_clr(const char *color)
 {
 	int len;
 	unsigned int res;
@@ -106,7 +103,7 @@ strtoclr(const char *color)
 	if (len == 8)
 		res = (res << 8) | 0xFF;
 
-	color_t c = {
+	Clr c = {
 		((res >> 16) & 0xff) * (0xffffffff / 0xff),
 		((res >> 8) & 0xff) * (0xffffffff / 0xff),
 		((res >> 0) & 0xff) * (0xffffffff / 0xff),
@@ -116,9 +113,9 @@ strtoclr(const char *color)
 }
 
 static void
-output_frame(struct output *output)
+output_frame(Output *output)
 {
-	color_t c = colorname[state];
+	Clr c = colorname[state];
 	struct wl_buffer *buffer;
 
 	/* alpha has no effect on this surface */
@@ -136,9 +133,9 @@ output_frame(struct output *output)
 }
 
 static void
-outputs_frame()
+outputs_frame(void)
 {
-	struct output *output;
+	Output *output;
 
 	wl_list_for_each(output, &output_list, link)
 		output_frame(output);
@@ -150,7 +147,7 @@ lock_surface_configure(void *data,
 		struct ext_session_lock_surface_v1 *lock_surface,
 		uint32_t serial, uint32_t width, uint32_t height)
 {
-	struct output *output = data;
+	Output *output = data;
 	output->width = width;
 	output->height = height;
 	ext_session_lock_surface_v1_ack_configure(lock_surface, serial);
@@ -162,7 +159,7 @@ static const struct ext_session_lock_surface_v1_listener lock_surface_listener =
 };
 
 static void
-output_create(struct output *output)
+output_create(Output *output)
 {
 	output->surface = wl_compositor_create_surface(compositor);
 	if (!output->surface)
@@ -184,7 +181,7 @@ output_geometry(void *data, struct wl_output *wl_output,
 		int32_t subpixel, const char *make, const char *model,
 		int32_t transform)
 {
-	struct output *output = data;
+	Output *output = data;
 	if (running)
 		output_frame(output);
 }
@@ -192,7 +189,7 @@ output_geometry(void *data, struct wl_output *wl_output,
 static void
 output_done(void *data, struct wl_output *wl_output)
 {
-	struct output *output = data;
+	Output *output = data;
 	if (!output->created && running)
 		output_create(output);
 }
@@ -200,7 +197,7 @@ output_done(void *data, struct wl_output *wl_output)
 static void
 output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 {
-	struct output *output = data;
+	Output *output = data;
 	output->scale = scale;
 	if (running)
 		output_frame(output);
@@ -209,12 +206,12 @@ output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 static void
 output_name(void *data, struct wl_output *wl_output, const char *name)
 {
-	struct output *output = data;
+	Output *output = data;
 	output->name = strdup(name);
 }
 
 static void
-output_destroy(struct output *output)
+output_destroy(Output *output)
 {
 	wl_list_remove(&output->link);
 	if (output->lock_surface != NULL)
@@ -273,7 +270,7 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		if (!xkb_keysym_to_utf8(sym, buf, 8))
 			break;
 		n = strnlen(buf, 8);
-		if (pw.len + n < sizeof(pw)) {
+		if (pw.len + n < 256) {
 			memcpy(pw.input + pw.len, buf, n);
 			pw.len += n;
 		}
@@ -305,7 +302,7 @@ keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 }
 
 static void
-keyboard_repeat()
+keyboard_repeat(void)
 {
 	struct itimerspec spec = { 0 };
 
@@ -369,7 +366,7 @@ seat_capabilities(void *data, struct wl_seat *wl_seat,
 	if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD))
 		return;
 
-	keyboard = calloc(1, sizeof(struct keyboard));
+	keyboard = calloc(1, sizeof(*keyboard));
 	keyboard->keyboard = wl_seat_get_keyboard(wl_seat);
 	if (!(keyboard->context = xkb_context_new(XKB_CONTEXT_NO_FLAGS)))
 		errx(EXIT_FAILURE, "xkb_context_new failed");
@@ -400,7 +397,7 @@ registry_global(void *data, struct wl_registry *registry,
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 	}
 	else if (!strcmp(interface, wl_output_interface.name)) {
-		struct output *output = calloc(1, sizeof(struct output));
+		Output *output = calloc(1, sizeof(Output));
 		output->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
 		output->wl_name = name;
 		wl_output_add_listener(output->wl_output, &output_listener, output);
@@ -412,7 +409,7 @@ static void
 registry_global_remove(void *data,
 		struct wl_registry *registry, uint32_t name)
 {
-	struct output *output, *tmp;
+	Output *output, *tmp;
 
 	wl_list_for_each_safe(output, tmp, &output_list, link) {
 		if (output->wl_name == name) {
@@ -445,7 +442,7 @@ static const struct ext_session_lock_v1_listener lock_listener = {
 };
 
 static void
-usage()
+usage(void)
 {
 	fprintf(stderr, "usage: wlock [-v] [-c init_color] [-f fail_color] [-i input_color]\n");
 	exit(1);
@@ -463,7 +460,7 @@ main(int argc, char *argv[])
 		case 'c':
 		case 'f':
 		case 'i':
-			colorname[opt == 'f' ? FAILED : opt == 'i' ? INPUT : INIT] = strtoclr(optarg);
+			colorname[opt == 'f' ? FAILED : opt == 'i' ? INPUT : INIT] = parse_clr(optarg);
 			break;
 		case 'v':
 			puts("wlock " VERSION);
@@ -508,7 +505,7 @@ main(int argc, char *argv[])
 	if (wl_display_roundtrip(display) < 0)
 		return EXIT_FAILURE;
 
-	struct output *output;
+	Output *output;
 	wl_list_for_each(output, &output_list, link)
 		output_create(output);
 
@@ -517,8 +514,8 @@ main(int argc, char *argv[])
 			return EXIT_FAILURE;
 
 	struct pollfd fds[] = {
-		{ wl_display_get_fd(display), POLLIN },
-		{ keyboard->repeat_timer,     POLLIN },
+		{ wl_display_get_fd(display), POLLIN, 0 },
+		{ keyboard->repeat_timer,     POLLIN, 0 },
 	};
 
 	running = true;
@@ -543,5 +540,5 @@ main(int argc, char *argv[])
 	ext_session_lock_v1_unlock_and_destroy(lock);
 	wl_display_roundtrip(display);
 
-	return 0;
+	return EXIT_SUCCESS;
 }
