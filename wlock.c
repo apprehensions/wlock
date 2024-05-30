@@ -444,7 +444,7 @@ static const struct ext_session_lock_v1_listener lock_listener = {
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: wlock [-v] [-c init_color] [-f fail_color] [-i input_color]\n");
+	fprintf(stderr, "usage: wlock [-hv] [-c init_color] [-f fail_color] [-i input_color]\n");
 	exit(1);
 }
 
@@ -455,7 +455,7 @@ main(int argc, char *argv[])
 	struct spwd *sp;
 	struct passwd *p;
 
-	while ((opt = getopt(argc, argv, "c:f:i:v")) != -1) {
+	while ((opt = getopt(argc, argv, "c:f:i:hv")) != -1) {
 		switch (opt) {
 		case 'c':
 		case 'f':
@@ -465,6 +465,9 @@ main(int argc, char *argv[])
 		case 'v':
 			puts("wlock " VERSION);
 			return EXIT_SUCCESS;
+		case 'h':
+		default:
+			usage();
 		}
 	}
 	if (optind < argc)
