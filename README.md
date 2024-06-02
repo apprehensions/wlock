@@ -29,3 +29,8 @@ make install
 Run `wlock`.
 
 See the wlock help page (`wlock -h`) for more details.
+
+## Credits
+
+- [swaylock](https://github.com/swaywm/swaylock)
+- [waylock](https://codeberg.org/ifreund/waylock)
