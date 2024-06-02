@@ -96,12 +96,10 @@ parse_clr(const char *color)
 	unsigned int res;
 
 	len = strlen(color);
-	if (len != 8)
+	if (len != 6)
 		errx(EXIT_FAILURE, "invalid color given: %s", color);
 
 	res = strtoul(color, NULL, 16);
-	if (len == 8)
-		res = (res << 8) | 0xFF;
 
 	Clr c = {
 		((res >> 16) & 0xff) * (0xffffffff / 0xff),
@@ -117,6 +115,7 @@ output_frame(Output *output)
 {
 	Clr c = colorname[state];
 	struct wl_buffer *buffer;
+	struct wl_region *opaque = wl_compositor_create_region(compositor);
 
 	/* alpha has no effect on this surface */
 	buffer = wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer(
@@ -126,6 +125,8 @@ output_frame(Output *output)
 
 	wl_surface_attach(output->surface, buffer, 0, 0);
 	wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
+	wl_region_add(opaque, 0, 0, INT32_MAX, INT32_MAX);
+	wl_surface_set_opaque_region(output->surface, opaque);
 	wp_viewport_set_destination(output->viewport, output->width, output->height);
 	wl_surface_commit(output->surface);
 
