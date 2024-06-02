@@ -75,7 +75,7 @@ static char *hash;
 
 static bool locked, running;
 
-enum state { INIT, INPUT, FAILED } state = INIT;
+enum input_state { INIT, INPUT, FAILED } input_state = INIT;
 
 static Clr colorname[3] = {
 	[INIT]   = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
@@ -111,7 +111,7 @@ parse_clr(const char *color)
 static void
 output_frame(Output *output)
 {
-	Clr c = colorname[state];
+	Clr c = colorname[input_state];
 	struct wl_buffer *buffer;
 	struct wl_region *opaque = wl_compositor_create_region(compositor);
 
@@ -252,7 +252,7 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		else
 			running = !!strcmp(inputhash, hash);
 		if (running)
-			state = FAILED;
+			input_state = FAILED;
 		explicit_bzero(&pw.input, sizeof(pw.input));
 		pw.len = 0;
 		break;
@@ -265,7 +265,7 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		pw.len = 0;
 		break;
 	default:
-		state = INPUT;
+		input_state = INPUT;
 		if (!xkb_keysym_to_utf8(sym, buf, 8))
 			break;
 		n = strnlen(buf, 8);
