@@ -101,13 +101,11 @@ parse_clr(const char *color)
 
 	res = strtoul(color, NULL, 16);
 
-	Clr c = {
+	return (Clr){
 		((res >> 16) & 0xff) * (0xffffffff / 0xff),
 		((res >> 8) & 0xff) * (0xffffffff / 0xff),
 		((res >> 0) & 0xff) * (0xffffffff / 0xff),
 	};
-
-	return c;
 }
 
 static void
@@ -434,7 +432,9 @@ lock_locked(void *data, struct ext_session_lock_v1 *lock)
 static void
 lock_finished(void *data, struct ext_session_lock_v1 *lock)
 {
-	abort();
+	if (!locked)
+		errx(EXIT_FAILURE, "another lockscreen is already running");
+	warnx("compositor requested unlock");
 }
 
 static const struct ext_session_lock_v1_listener lock_listener = {
@@ -495,6 +495,7 @@ main(int argc, char *argv[])
 	display = wl_display_connect(NULL);
 	if (!display)
 		errx(EXIT_FAILURE, "wayland display connect failed");
+
 	registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	if (wl_display_roundtrip(display) < 0)
@@ -512,10 +513,6 @@ main(int argc, char *argv[])
 	Output *output;
 	wl_list_for_each(output, &output_list, link)
 		output_create(output);
-
-	while (!locked)
-		if (wl_display_roundtrip(display) < 0)
-			return EXIT_FAILURE;
 
 	struct pollfd fds[] = {
 		{ wl_display_get_fd(display), POLLIN, 0 },
