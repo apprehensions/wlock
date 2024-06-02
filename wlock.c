@@ -288,9 +288,9 @@ keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
 		errx(EXIT_FAILURE, "unknown keymap %d", format);
 
-	map_shm = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	map_shm = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map_shm == MAP_FAILED)
-		errx(EXIT_FAILURE, "keymap shm");
+		errx(EXIT_FAILURE, "mmap keymap shm failed");
 
 	keyboard->keymap = xkb_keymap_new_from_string(keyboard->context,
 		map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, 0);
