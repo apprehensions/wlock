@@ -54,7 +54,6 @@ typedef struct {
 	struct wp_viewport *viewport;
 
 	const char *name;
-	int32_t scale;
 	int32_t width, height;
 	bool created;
 
@@ -118,8 +117,6 @@ output_frame(Output *output)
 	/* alpha has no effect on this surface */
 	buffer = wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer(
 		buf_manager, c.r, c.g, c.b, 0xffffffff);
-
-	wl_surface_set_buffer_scale(output->surface, output->scale);
 
 	wl_surface_attach(output->surface, buffer, 0, 0);
 	wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
@@ -194,15 +191,6 @@ output_done(void *data, struct wl_output *wl_output)
 }
 
 static void
-output_scale(void *data, struct wl_output *wl_output, int32_t scale)
-{
-	Output *output = data;
-	output->scale = scale;
-	if (running)
-		output_frame(output);
-}
-
-static void
 output_name(void *data, struct wl_output *wl_output, const char *name)
 {
 	Output *output = data;
@@ -227,7 +215,7 @@ static const struct wl_output_listener output_listener = {
 	.geometry = output_geometry,
 	.mode = noop,
 	.done = output_done,
-	.scale = output_scale,
+	.scale = noop,
 	.name = output_name,
 	.description = noop,
 };
