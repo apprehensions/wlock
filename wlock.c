@@ -1,5 +1,4 @@
-#define _BSD_SOURCE
-#include <crypt.h>
+#define _DEFAULT_SOURCE
 #include <err.h>
 #include <errno.h>
 #include <getopt.h>
