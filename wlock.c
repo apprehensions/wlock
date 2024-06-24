@@ -3,7 +3,6 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
-#include <poll.h>
 #include <pwd.h>
 #include <shadow.h>
 #include <stdbool.h>
@@ -11,8 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/timerfd.h>
-#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
@@ -21,24 +18,21 @@
 #include "single-pixel-buffer-v1-protocol.h"
 #include "viewporter-protocol.h"
 
-#define LENGTH(X) (sizeof(X) / sizeof((X)[0]))
-
 typedef struct {
 	unsigned int r, g, b;
 } Clr;
 
-static struct {
+typedef struct {
 	struct wl_keyboard *keyboard;
-	struct xkb_context *context;
 	struct xkb_keymap *keymap;
 	struct xkb_state *state;
+} Keyboard;
 
-	int repeat_timer;
-	int repeat_delay;
-	int repeat_period;
-	enum wl_keyboard_key_state repeat_key_state;
-	xkb_keysym_t repeat_sym;
-} *keyboard;
+typedef struct {
+	struct wl_seat *seat;
+	Keyboard *kb;
+	struct wl_list link;
+} Seat;
 
 static struct {
 	char input[256];
@@ -54,23 +48,25 @@ typedef struct {
 
 	const char *name;
 	int32_t width, height;
-	bool created;
 
 	struct wl_list link;
 } Output;
 
+static const char usage[] = "usage: %s [-hv] [-c init_color] [-f fail_color] [-i input_color]\n";
+
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
-static struct wl_seat *seat;
 static struct wp_viewporter *viewporter;
 static struct ext_session_lock_v1 *lock;
 static struct ext_session_lock_manager_v1 *lock_manager;
 static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
-static struct wl_list output_list;
+static struct xkb_context *xkb_ctx;
+
+static struct wl_list outputs;
+static struct wl_list seats;
 
 static char *hash;
-
 static bool locked, running;
 
 enum input_state { INIT, INPUT, FAILED } input_state = INIT;
@@ -121,6 +117,7 @@ output_frame(Output *output)
 	wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
 	wl_region_add(opaque, 0, 0, INT32_MAX, INT32_MAX);
 	wl_surface_set_opaque_region(output->surface, opaque);
+	wl_region_destroy(opaque);
 	wp_viewport_set_destination(output->viewport, output->width, output->height);
 	wl_surface_commit(output->surface);
 
@@ -132,10 +129,9 @@ outputs_frame(void)
 {
 	Output *output;
 
-	wl_list_for_each(output, &output_list, link)
+	wl_list_for_each(output, &outputs, link)
 		output_frame(output);
 }
-
 
 static void
 lock_surface_configure(void *data,
@@ -145,6 +141,7 @@ lock_surface_configure(void *data,
 	Output *output = data;
 	output->width = width;
 	output->height = height;
+
 	ext_session_lock_surface_v1_ack_configure(lock_surface, serial);
 	output_frame(output);
 }
@@ -154,70 +151,35 @@ static const struct ext_session_lock_surface_v1_listener lock_surface_listener =
 };
 
 static void
-output_create(Output *output)
+output_create_surface(Output *output)
 {
 	output->surface = wl_compositor_create_surface(compositor);
-	if (!output->surface)
-		errx(EXIT_FAILURE, "no compositor surface given");
-
-	output->lock_surface = ext_session_lock_v1_get_lock_surface(lock, output->surface, output->wl_output);
-	if (!output->lock_surface)
-		errx(EXIT_FAILURE, "no lock surface surface given");
-	ext_session_lock_surface_v1_add_listener(output->lock_surface, &lock_surface_listener, output);
-
+	output->lock_surface = ext_session_lock_v1_get_lock_surface(
+		lock, output->surface, output->wl_output);
 	output->viewport = wp_viewporter_get_viewport(viewporter, output->surface);
 
-	output->created = true;
-}
-
-static void
-output_geometry(void *data, struct wl_output *wl_output,
-		int32_t x, int32_t y, int32_t width_mm, int32_t height_mm,
-		int32_t subpixel, const char *make, const char *model,
-		int32_t transform)
-{
-	Output *output = data;
-	if (running)
-		output_frame(output);
-}
-
-static void
-output_done(void *data, struct wl_output *wl_output)
-{
-	Output *output = data;
-	if (!output->created && running)
-		output_create(output);
-}
-
-static void
-output_name(void *data, struct wl_output *wl_output, const char *name)
-{
-	Output *output = data;
-	output->name = strdup(name);
+	ext_session_lock_surface_v1_add_listener(output->lock_surface, &lock_surface_listener, output);
 }
 
 static void
 output_destroy(Output *output)
 {
 	wl_list_remove(&output->link);
-	if (output->lock_surface != NULL)
-		ext_session_lock_surface_v1_destroy(output->lock_surface);
-	if (output->surface != NULL)
-		wl_surface_destroy(output->surface);
-	if (output->viewport != NULL)
-		wp_viewport_destroy(output->viewport);
+	wp_viewport_destroy(output->viewport);
+	ext_session_lock_surface_v1_destroy(output->lock_surface);
+	wl_surface_destroy(output->surface);
 	wl_output_release(output->wl_output);
 	free(output);
 }
 
-static const struct wl_output_listener output_listener = {
-	.geometry = output_geometry,
-	.mode = noop,
-	.done = output_done,
-	.scale = noop,
-	.name = output_name,
-	.description = noop,
-};
+static void
+outputs_destroy(void)
+{
+	Output *output, *tmp;
+
+	wl_list_for_each_safe(output, tmp, &outputs, link)
+		output_destroy(output);
+}
 
 static void
 keyboard_keypress(enum wl_keyboard_key_state key_state,
@@ -267,98 +229,93 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 }
 
 static void
-keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
+keyboard_handle_keymap(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t format, int32_t fd, uint32_t size)
 {
+	Seat *seat = data;
 	char *map_shm;
 
 	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
 		errx(EXIT_FAILURE, "unknown keymap %d", format);
 
+	xkb_keymap_unref(seat->kb->keymap);
+	xkb_state_unref(seat->kb->state);
+
 	map_shm = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map_shm == MAP_FAILED)
 		errx(EXIT_FAILURE, "mmap keymap shm failed");
 
-	keyboard->keymap = xkb_keymap_new_from_string(keyboard->context,
-		map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, 0);
+	seat->kb->keymap = xkb_keymap_new_from_buffer(xkb_ctx,
+		map_shm, size, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	munmap(map_shm, size);
 	close(fd);
 
-	keyboard->state = xkb_state_new(keyboard->keymap);
+	seat->kb->state = xkb_state_new(seat->kb->keymap);
 }
 
 static void
-keyboard_repeat(void)
+keyboard_handle_key(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t serial, uint32_t time, uint32_t key, uint32_t key_state)
 {
-	struct itimerspec spec = { 0 };
+	Seat *seat = data;
 
-	keyboard_keypress(keyboard->repeat_key_state, keyboard->repeat_sym);
-	spec.it_value.tv_sec = keyboard->repeat_period / 1000;
-	spec.it_value.tv_nsec = (keyboard->repeat_period % 1000) * 1000000l;
-	timerfd_settime(keyboard->repeat_timer, 0, &spec, NULL);
+	keyboard_keypress((enum wl_keyboard_key_state)key_state,
+		xkb_state_key_get_one_sym(seat->kb->state, key + 8));
 }
 
 static void
-keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t serial, uint32_t time, uint32_t key, uint32_t _key_state)
-{
-	struct itimerspec spec = { 0 };
-	enum wl_keyboard_key_state key_state = _key_state;
-	xkb_keysym_t sym = xkb_state_key_get_one_sym(keyboard->state, key + 8);
-
-	keyboard_keypress(key_state, sym);
-
-	if (key_state == WL_KEYBOARD_KEY_STATE_PRESSED && keyboard->repeat_period >= 0) {
-		keyboard->repeat_key_state = key_state;
-		keyboard->repeat_sym = sym;
-
-		spec.it_value.tv_sec = keyboard->repeat_delay / 1000;
-		spec.it_value.tv_nsec = (keyboard->repeat_delay % 1000) * 1000000l;
-	}
-
-	timerfd_settime(keyboard->repeat_timer, 0, &spec, NULL);
-}
-
-static void
-keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
+keyboard_handle_modifiers(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, uint32_t mods_depressed,
 		uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
-	xkb_state_update_mask(keyboard->state, mods_depressed, mods_latched,
+	Seat *seat = data;
+
+	xkb_state_update_mask(seat->kb->state, mods_depressed, mods_latched,
 			mods_locked, 0, 0, group);
 }
 
-static void
-keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
-               int32_t rate, int32_t delay)
-{
-	keyboard->repeat_delay = delay;
-	keyboard->repeat_period = rate >= 0 ? 1000 / rate : -1;
-}
-
 static const struct wl_keyboard_listener keyboard_listener = {
-	.keymap = keyboard_keymap,
+	.keymap = keyboard_handle_keymap,
 	.enter = noop,
 	.leave = noop,
-	.key = keyboard_key,
-	.modifiers = keyboard_modifiers,
-	.repeat_info = keyboard_repeat_info,
+	.key = keyboard_handle_key,
+	.modifiers = keyboard_handle_modifiers,
+	.repeat_info = noop,
 };
 
 static void
 seat_capabilities(void *data, struct wl_seat *wl_seat,
 		enum wl_seat_capability caps)
 {
+	Seat *seat = data;
+
 	if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD))
 		return;
 
-	keyboard = calloc(1, sizeof(*keyboard));
-	keyboard->keyboard = wl_seat_get_keyboard(wl_seat);
-	if (!(keyboard->context = xkb_context_new(XKB_CONTEXT_NO_FLAGS)))
-		errx(EXIT_FAILURE, "xkb_context_new failed");
-	if ((keyboard->repeat_timer = timerfd_create(CLOCK_MONOTONIC, 0)) < 0)
-		err(EXIT_FAILURE, NULL);
-	wl_keyboard_add_listener(keyboard->keyboard, &keyboard_listener, NULL);
+	seat->kb = calloc(1, sizeof(Keyboard));
+	seat->kb->keyboard = wl_seat_get_keyboard(seat->seat);
+	
+	wl_keyboard_add_listener(seat->kb->keyboard, &keyboard_listener, seat);
+}
+
+static void
+seat_destroy(Seat *seat)
+{
+	wl_keyboard_destroy(seat->kb->keyboard);
+	xkb_keymap_unref(seat->kb->keymap);
+	xkb_state_unref(seat->kb->state);
+	free(seat->kb);
+	wl_seat_destroy(seat->seat);
+	free(seat);
+}
+
+static void
+seats_destroy(void)
+{
+	Seat *seat, *tmp;
+
+	wl_list_for_each_safe(seat, tmp, &seats, link)
+		seat_destroy(seat);
 }
 
 static const struct wl_seat_listener seat_listener = {
@@ -373,21 +330,23 @@ registry_global(void *data, struct wl_registry *registry,
 	if (!strcmp(interface, wl_compositor_interface.name))
 		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
 	else if (!strcmp(interface, wp_single_pixel_buffer_manager_v1_interface.name))
-		buf_manager = wl_registry_bind(registry, name, &wp_single_pixel_buffer_manager_v1_interface, 1);
+		buf_manager = wl_registry_bind(
+			registry, name, &wp_single_pixel_buffer_manager_v1_interface, 1);
 	else if (!strcmp(interface, wp_viewporter_interface.name))
 		viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
 	else if (!strcmp(interface, ext_session_lock_manager_v1_interface.name))
-		lock_manager = wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1);
-	else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
-		wl_seat_add_listener(seat, &seat_listener, NULL);
-	}
-	else if (!strcmp(interface, wl_output_interface.name)) {
+		lock_manager = wl_registry_bind(
+			registry, name, &ext_session_lock_manager_v1_interface, 1);
+	else if (!strcmp(interface, wl_seat_interface.name)) {
+		Seat *seat = calloc(1, sizeof(Seat));
+		seat->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
+		wl_seat_add_listener(seat->seat, &seat_listener, seat);
+		wl_list_insert(&seats, &seat->link);
+	} else if (!strcmp(interface, wl_output_interface.name)) {
 		Output *output = calloc(1, sizeof(Output));
 		output->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
 		output->wl_name = name;
-		wl_output_add_listener(output->wl_output, &output_listener, output);
-		wl_list_insert(&output_list, &output->link);
+		wl_list_insert(&outputs, &output->link);
 	}
 }
 
@@ -397,7 +356,7 @@ registry_global_remove(void *data,
 {
 	Output *output, *tmp;
 
-	wl_list_for_each_safe(output, tmp, &output_list, link) {
+	wl_list_for_each_safe(output, tmp, &outputs, link) {
 		if (output->wl_name == name) {
 			output_destroy(output);
 			break;
@@ -430,18 +389,82 @@ static const struct ext_session_lock_v1_listener lock_listener = {
 };
 
 static void
-usage(void)
+drop(void)
 {
-	fprintf(stderr, "usage: wlock [-hv] [-c init_color] [-f fail_color] [-i input_color]\n");
-	exit(1);
+	struct spwd *sp;
+	struct passwd *p;
+
+	if (!(p = getpwuid(getuid())))
+		err(EXIT_FAILURE, NULL);
+	hash = p->pw_passwd;
+	if (!strcmp(hash, "x")) {
+		if (!(sp = getspnam(p->pw_name)))
+			errx(EXIT_FAILURE, "getspnam failed, ensure suid & sgid lock");
+		hash = sp->sp_pwdp;
+	}
+
+	if (!crypt("", hash))
+		err(EXIT_FAILURE, NULL);
+
+	if (setgid(getgid()) != 0)
+		err(EXIT_FAILURE, NULL);
+	if (setuid(getuid()) != 0)
+		err(EXIT_FAILURE, NULL);
+	if (setuid(0) > 0 || setgid(0) > 0)
+		errx(EXIT_FAILURE, "should not able to restore root");
+}
+
+static void
+setup(void)
+{
+	Output *output;
+
+	wl_list_init(&seats);
+	wl_list_init(&outputs);
+
+	if (!(display = wl_display_connect(NULL)))
+		errx(EXIT_FAILURE, "wayland display connect failed");
+
+	if (!(xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS)))
+		errx(EXIT_FAILURE, "xkb_context_new failed");
+
+	registry = wl_display_get_registry(display);
+	wl_registry_add_listener(registry, &registry_listener, NULL);
+	wl_display_roundtrip(display);
+
+	if (!compositor || !lock_manager)
+		errx(EXIT_FAILURE, "unsupported compositor");
+
+	lock = ext_session_lock_manager_v1_lock(lock_manager);
+	ext_session_lock_v1_add_listener(lock, &lock_listener, NULL);
+	wl_display_roundtrip(display);
+
+	wl_list_for_each(output, &outputs, link)
+		output_create_surface(output);
+}
+
+static void
+cleanup(void)
+{
+	ext_session_lock_v1_unlock_and_destroy(lock);
+	wl_display_roundtrip(display);
+
+	outputs_destroy();
+	ext_session_lock_manager_v1_destroy(lock_manager);
+	wp_single_pixel_buffer_manager_v1_destroy(buf_manager);
+	wp_viewporter_destroy(viewporter);
+	seats_destroy();
+	xkb_context_unref(xkb_ctx);
+	wl_compositor_destroy(compositor);
+	wl_registry_destroy(registry);
+	wl_display_disconnect(display);
 }
 
 int
 main(int argc, char *argv[])
 {
+	int i;
 	int opt;
-	struct spwd *sp;
-	struct passwd *p;
 
 	while ((opt = getopt(argc, argv, "c:f:i:hv")) != -1) {
 		switch (opt) {
@@ -455,78 +478,19 @@ main(int argc, char *argv[])
 			return EXIT_SUCCESS;
 		case 'h':
 		default:
-			usage();
+			fprintf(stderr, usage, argv[0]);
 		}
 	}
-	if (optind < argc)
-		usage();
+	fprintf(stderr, usage, argv[0]);
 
-	if (!(p = getpwuid(getuid())))
-		err(EXIT_FAILURE, NULL);
-	hash = p->pw_passwd;
-	if (!strcmp(hash, "x")) {
-		if (!(sp = getspnam(p->pw_name)))
-			errx(EXIT_FAILURE, "getspnam failed, ensure suid & sgid lock");
-		hash = sp->sp_pwdp;
-	}
-
-	if (setgid(getgid()) != 0)
-		err(EXIT_FAILURE, NULL);
-	if (setuid(getuid()) != 0)
-		err(EXIT_FAILURE, NULL);
-	if (setuid(0) > 0 || setgid(0) > 0)
-		errx(EXIT_FAILURE, "failed to drop root (able to restore root)");
-
-	wl_list_init(&output_list);
-
-	display = wl_display_connect(NULL);
-	if (!display)
-		errx(EXIT_FAILURE, "wayland display connect failed");
-
-	registry = wl_display_get_registry(display);
-	wl_registry_add_listener(registry, &registry_listener, NULL);
-	if (wl_display_roundtrip(display) < 0)
-		errx(EXIT_FAILURE, "roundtrip failed");
-
-	if (!compositor || !lock_manager)
-		errx(EXIT_FAILURE, "compositor missing wl_compositor or ext-session-lock-v1");
-
-	lock = ext_session_lock_manager_v1_lock(lock_manager);
-	ext_session_lock_v1_add_listener(lock, &lock_listener, NULL);
-
-	if (wl_display_roundtrip(display) < 0)
-		return EXIT_FAILURE;
-
-	Output *output;
-	wl_list_for_each(output, &output_list, link)
-		output_create(output);
-
-	struct pollfd fds[] = {
-		{ wl_display_get_fd(display), POLLIN, 0 },
-		{ keyboard->repeat_timer,     POLLIN, 0 },
-	};
+	drop();
+	setup();
 
 	running = true;
-	while (running) {
-		if (wl_display_flush(display) < 0 && errno != EAGAIN)
-			break;
+	while (running && wl_display_dispatch(display) > 0)
+		;
 
-		errno = 0;
-		if (poll(fds, 2, -1) == -1 && errno != EINTR)
-			err(EXIT_FAILURE, NULL);
-
-		if (fds[0].revents & POLLIN)
-			if (wl_display_dispatch(display) < 0)
-				running = false;
-		if (fds[0].revents & POLLHUP || fds[0].revents & POLLERR)
-			errx(EXIT_FAILURE, "wayland socket disconnect");
-
-		if (fds[1].revents & POLLIN)
-			keyboard_repeat();
-	}
-
-	ext_session_lock_v1_unlock_and_destroy(lock);
-	wl_display_roundtrip(display);
+	cleanup();
 
 	return EXIT_SUCCESS;
 }

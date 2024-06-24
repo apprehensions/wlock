@@ -6,10 +6,13 @@ PREFIX = /usr/local
 
 PKG_CONFIG = pkg-config
 
-PKGS       = wayland-client xkbcommon
+PKGS = wayland-client xkbcommon
+INCS = `$(PKG_CONFIG) --cflags $(PKGS)`
+LIBS = `$(PKG_CONFIG) --libs $(PKGS)`
+
 WLCPPFLAGS = -DVERSION=\"$(VERSION)\"
-WLCFLAGS   = `$(PKG_CONFIG) --cflags $(PKGS)` $(WLCPPFLAGS) $(CFLAGS)
-LDLIBS     = `$(PKG_CONFIG) --libs $(PKGS)` -lcrypt
+WLCFLAGS   = $(INCS) $(WLCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
+LDLIBS     = $(LIBS) -lcrypt
 
 SRC = wlock.c single-pixel-buffer-v1-protocol.c ext-session-lock-v1-protocol.c viewporter-protocol.c
 OBJ = $(SRC:.c=.o)
@@ -17,7 +20,7 @@ OBJ = $(SRC:.c=.o)
 all: wlock
 
 wlock: $(OBJ)
-	$(CC) -o $@ $(OBJ) $(LDLIBS) $(LDFLAGS) $(WLCFLAGS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)
 
 wlock.o: wlock.c single-pixel-buffer-v1-protocol.h ext-session-lock-v1-protocol.h viewporter-protocol.h
 single-pixel-buffer-v1-protocol.o: single-pixel-buffer-v1-protocol.h
@@ -53,6 +56,6 @@ uninstall:
 
 .SUFFIXES: .c .o
 .c.o:
-	$(CC) -c $< $(CPPFLAGS) $(WLCFLAGS)
+	$(CC) -o $@ $(WLCFLAGS) -c $<
 
 .PHONY: all clean install uninstall
