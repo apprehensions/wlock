@@ -1,7 +1,7 @@
 # wlock
 
-wlock is a itty-bitty simple screenlocker in C99 for Wayland compositors
-that support the `ext-session-lock-v1` protocol.
+wlock is a itty-bitty simple screenlocker for Wayland compositors that support
+the `ext-session-lock-v1` protocol.
 
 Excerpt from the protocol specifying the behavior:
 > The client is responsible for performing authentication and informing the

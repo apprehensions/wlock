@@ -481,7 +481,6 @@ main(int argc, char *argv[])
 			fprintf(stderr, usage, argv[0]);
 		}
 	}
-	fprintf(stderr, usage, argv[0]);
 
 	drop();
 	setup();
