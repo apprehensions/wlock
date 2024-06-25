@@ -11,12 +11,12 @@ Excerpt from the protocol specifying the behavior:
 
 ## Building
 
-Build prerequisites:
+To build wlock first ensure that you have the following dependencies:
 
-- pkg-config
-- wayland
-- wayland-protocols
-- xkbcommon
+* pkg-config
+* wayland
+* wayland-protocols
+* xkbcommon
 
 After installing the dependencies, you may build and install wlock:
 ```
@@ -28,7 +28,7 @@ make install
 
 Run `wlock`.
 
-See the wlock help page (`wlock -h`) for more details.
+See the wlock usage (`wlock -h`) for more details.
 
 ## Credits
 
