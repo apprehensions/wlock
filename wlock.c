@@ -463,7 +463,6 @@ cleanup(void)
 int
 main(int argc, char *argv[])
 {
-	int ret = EXIT_FAILURE;
 	int opt;
 
 	while ((opt = getopt(argc, argv, "c:f:i:vh")) != -1) {
