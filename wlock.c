@@ -463,10 +463,10 @@ cleanup(void)
 int
 main(int argc, char *argv[])
 {
-	int i;
+	int ret = EXIT_FAILURE;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:f:i:hv")) != -1) {
+	while ((opt = getopt(argc, argv, "c:f:i:vh")) != -1) {
 		switch (opt) {
 		case 'c':
 		case 'f':
@@ -479,6 +479,7 @@ main(int argc, char *argv[])
 		case 'h':
 		default:
 			fprintf(stderr, usage, argv[0]);
+			return opt == 'h' ? EXIT_SUCCESS : EXIT_FAILURE;
 		}
 	}
 
