@@ -69,7 +69,7 @@ static struct wl_list seats;
 static char *hash;
 static bool locked, running;
 
-enum input_state { INIT, INPUT, FAILED } input_state = INIT;
+enum input_state { INIT, FAILED, INPUT } input_state = INIT;
 
 static Clr colorname[3] = {
 	[INIT]   = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
@@ -214,7 +214,6 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		pw.len = 0;
 		break;
 	default:
-		input_state = INPUT;
 		if (!xkb_keysym_to_utf8(sym, buf, 8))
 			break;
 		n = strnlen(buf, 8);
@@ -224,6 +223,8 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		}
 		break;
 	}
+
+	input_state = pw.len ? INPUT : input_state++ == FAILED;
 
 	outputs_frame();
 }
