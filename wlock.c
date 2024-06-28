@@ -69,12 +69,13 @@ static struct wl_list seats;
 static char *hash;
 static bool locked, running;
 
-enum input_state { INIT, FAILED, INPUT } input_state = INIT;
+enum input_state { INIT, FAILED, INPUT, INPUT_ALT } input_state = INIT;
 
-static Clr colorname[3] = {
-	[INIT]   = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
-	[INPUT]  = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
-	[FAILED] = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
+static Clr colorname[4] = {
+	[INIT]      = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
+	[INPUT]     = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
+	[INPUT_ALT] = { 0x00000000, 0x50505050, 0x70707070 }, /* during input, second color */
+	[FAILED]    = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
 };
 
 static void
@@ -224,7 +225,8 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		break;
 	}
 
-	input_state = pw.len ? INPUT : input_state == FAILED ? FAILED : INIT;
+	input_state = pw.len ? pw.len % 2 ? INPUT : INPUT_ALT :
+	              input_state == FAILED ? FAILED : INIT;
 
 	outputs_frame();
 }
@@ -466,12 +468,14 @@ main(int argc, char *argv[])
 {
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:f:i:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "a:c:f:i:vh")) != -1) {
 		switch (opt) {
+		case 'a':
 		case 'c':
 		case 'f':
 		case 'i':
-			colorname[opt == 'f' ? FAILED : opt == 'i' ? INPUT : INIT] = parse_clr(optarg);
+			colorname[opt == 'f' ? FAILED : opt == 'i' ? INPUT :
+			          opt == 'a' ? INPUT_ALT : INIT] = parse_clr(optarg);
 			break;
 		case 'v':
 			puts("wlock " VERSION);
