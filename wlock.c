@@ -224,7 +224,7 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		break;
 	}
 
-	input_state = pw.len ? INPUT : input_state++ == FAILED;
+	input_state = pw.len ? INPUT : input_state == FAILED ? FAILED : INIT;
 
 	outputs_frame();
 }
