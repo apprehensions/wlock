@@ -295,7 +295,7 @@ seat_capabilities(void *data, struct wl_seat *wl_seat,
 
 	seat->kb = calloc(1, sizeof(Keyboard));
 	seat->kb->keyboard = wl_seat_get_keyboard(seat->seat);
-	
+
 	wl_keyboard_add_listener(seat->kb->keyboard, &keyboard_listener, seat);
 }
 
