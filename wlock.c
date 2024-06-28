@@ -52,7 +52,7 @@ typedef struct {
 	struct wl_list link;
 } Output;
 
-static const char usage[] = "usage: %s [-hv] [-c init_color] [-f fail_color] [-i input_color]\n";
+
 
 static struct wl_display *display;
 static struct wl_registry *registry;
@@ -482,7 +482,8 @@ main(int argc, char *argv[])
 			return EXIT_SUCCESS;
 		case 'h':
 		default:
-			fprintf(stderr, usage, argv[0]);
+			fprintf(stderr, "usage: wlock [-hv] [-a input_alt_color] [-i input_color]\n"
+			                "             [-c init_color] [-f fail_color]\n");
 			return opt == 'h' ? EXIT_SUCCESS : EXIT_FAILURE;
 		}
 	}
