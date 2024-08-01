@@ -169,7 +169,6 @@ output_destroy(Output *output)
 	wp_viewport_destroy(output->viewport);
 	ext_session_lock_surface_v1_destroy(output->lock_surface);
 	wl_surface_destroy(output->surface);
-	wl_output_release(output->wl_output);
 	free(output);
 }
 
@@ -350,6 +349,8 @@ registry_global(void *data, struct wl_registry *registry,
 		output->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
 		output->wl_name = name;
 		wl_list_insert(&outputs, &output->link);
+		if (running)
+			output_create_surface (output);
 	}
 }
 
