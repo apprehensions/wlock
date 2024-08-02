@@ -169,6 +169,7 @@ output_destroy(Output *output)
 	wp_viewport_destroy(output->viewport);
 	ext_session_lock_surface_v1_destroy(output->lock_surface);
 	wl_surface_destroy(output->surface);
+	wl_output_destroy(output->wl_output);
 	free(output);
 }
 
