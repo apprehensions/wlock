@@ -48,7 +48,7 @@ viewporter-protocol.h:
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/stable/viewporter/viewporter.xml $@
 
 clean:
-	rm -f wlock *.o *-protocol.*
+	rm -f wlock $(OBJ) $(PROTO) $(PROTO:.h=.c)
 
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
