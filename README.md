@@ -1,7 +1,7 @@
 # wlock
 
 wlock is a itty-bitty simple screenlocker for Wayland compositors that support
-the `ext-session-lock-v1` protocol.
+the `ext-session-lock-v1` protocol; an effective port of slock to Wayland.
 
 Excerpt from the protocol specifying the behavior:
 > The client is responsible for performing authentication and informing the
@@ -29,6 +29,17 @@ make install
 Run `wlock`.
 
 See the wlock usage (`wlock -h`) for more details.
+
+See [swayidle](https://github.com/swaywm/swayidle) or 
+[widle](https://codeberg.org/sewn/widle) to use wlock
+as a screen locker for a Wayland desktop.
+
+## Comparison
+
+* [waylock](https://codeberg.org/ifreund/waylock): waylock and wlock
+  are very similar functionality wise, with the only change being
+  security (PAM) and codebase (Zig), being nicer to work with, as it
+  comes from the author of River.
 
 ## Credits
 
