@@ -7,8 +7,8 @@ PREFIX = /usr/local
 PKG_CONFIG = pkg-config
 
 PKGS = wayland-client xkbcommon
-INCS = `$(PKG_CONFIG) --cflags $(PKGS)`
-LIBS = `$(PKG_CONFIG) --libs $(PKGS)`
+INCS != $(PKG_CONFIG) --cflags $(PKGS)
+LIBS != $(PKG_CONFIG) --libs $(PKGS)
 
 WLCPPFLAGS = -DVERSION=\"$(VERSION)\"
 WLCFLAGS   = -pedantic -Wall $(INCS) $(WLCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
@@ -23,16 +23,16 @@ all: wlock
 .c.o:
 	$(CC) -o $@ $(WLCFLAGS) -c $<
 
-$(OBJ): config.h $(PROTO:.c=.h)
+$(OBJ): config.h $(PROTO)
 
 config.h:
 	cp config.def.h $@
 
 wlock: $(OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-WAYLAND_PROTOCOLS = `$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols`
-WAYLAND_SCANNER   = `$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner`
+WAYLAND_PROTOCOLS != $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols
+WAYLAND_SCANNER   != $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner
 
 single-pixel-buffer-v1-protocol.c:
 	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/single-pixel-buffer/single-pixel-buffer-v1.xml $@
