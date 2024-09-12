@@ -31,6 +31,7 @@ typedef struct {
 typedef struct {
 	struct wl_seat *seat;
 	Keyboard *kb;
+	struct wl_pointer *pointer;
 	struct wl_list link;
 } Seat;
 
@@ -282,18 +283,36 @@ static const struct wl_keyboard_listener keyboard_listener = {
 };
 
 static void
+pointer_handle_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
+		struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
+{
+	wl_pointer_set_cursor(pointer, serial, NULL, 0, 0);
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+	.enter = pointer_handle_enter,
+	.leave = noop,
+	.motion = noop,
+	.button = noop,
+	.axis = noop,
+};
+
+static void
 seat_capabilities(void *data, struct wl_seat *wl_seat,
 		enum wl_seat_capability caps)
 {
 	Seat *seat = data;
 
-	if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD))
-		return;
+	if (caps & WL_SEAT_CAPABILITY_POINTER) {
+		seat->pointer = wl_seat_get_pointer(wl_seat);
+		wl_pointer_add_listener(seat->pointer, &pointer_listener, NULL);
+	}
 
-	seat->kb = calloc(1, sizeof(Keyboard));
-	seat->kb->keyboard = wl_seat_get_keyboard(seat->seat);
-
-	wl_keyboard_add_listener(seat->kb->keyboard, &keyboard_listener, seat);
+	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
+		seat->kb = calloc(1, sizeof(Keyboard));
+		seat->kb->keyboard = wl_seat_get_keyboard(seat->seat);
+		wl_keyboard_add_listener(seat->kb->keyboard, &keyboard_listener, seat);
+	}
 }
 
 static void
