@@ -1,7 +1,8 @@
 # wlock
 
 wlock is a itty-bitty simple screenlocker for Wayland compositors that support
-the `ext-session-lock-v1` protocol; an effective port of slock to Wayland.
+the `ext-session-lock-v1` protocol; an effective port of slock to Wayland, merging
+the alternate color patch to give a sense of feedback.
 
 Excerpt from the protocol specifying the behavior:
 > The client is responsible for performing authentication and informing the
