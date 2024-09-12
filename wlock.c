@@ -47,7 +47,6 @@ typedef struct {
 	struct ext_session_lock_surface_v1 *lock_surface;
 	struct wp_viewport *viewport;
 
-	const char *name;
 	int32_t width, height;
 
 	struct wl_list link;
@@ -361,11 +360,11 @@ registry_global(void *data, struct wl_registry *registry,
 		wl_list_insert(&seats, &seat->link);
 	} else if (!strcmp(interface, wl_output_interface.name)) {
 		Output *output = calloc(1, sizeof(Output));
-		output->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
 		output->wl_name = name;
+		output->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
 		wl_list_insert(&outputs, &output->link);
 		if (running)
-			output_create_surface (output);
+			output_create_surface(output);
 	}
 }
 
