@@ -23,24 +23,6 @@ typedef struct {
 } Clr;
 
 typedef struct {
-	struct wl_keyboard *keyboard;
-	struct xkb_keymap *keymap;
-	struct xkb_state *state;
-} Keyboard;
-
-typedef struct {
-	struct wl_seat *seat;
-	Keyboard *kb;
-	struct wl_pointer *pointer;
-	struct wl_list link;
-} Seat;
-
-static struct {
-	char input[256];
-	int len;
-} pw;
-
-typedef struct {
 	uint32_t wl_name;
 	struct wl_output *wl_output;
 	struct wl_surface *surface;
@@ -54,15 +36,24 @@ typedef struct {
 
 static struct wl_display *display;
 static struct wl_registry *registry;
+static struct wl_seat *seat;
 static struct wl_compositor *compositor;
 static struct wp_viewporter *viewporter;
 static struct ext_session_lock_v1 *lock;
 static struct ext_session_lock_manager_v1 *lock_manager;
 static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
+static struct wl_pointer *pointer;
+static struct wl_keyboard *keyboard;
 static struct xkb_context *xkb_ctx;
+static struct xkb_state *xkb_state;
+static struct xkb_keymap *keymap;
 
 static struct wl_list outputs;
-static struct wl_list seats;
+
+static struct {
+	char input[256];
+	int len;
+} pw;
 
 static char *hash;
 static bool locked, running;
@@ -230,35 +221,32 @@ static void
 keyboard_handle_keymap(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t format, int32_t fd, uint32_t size)
 {
-	Seat *seat = data;
 	char *map_shm;
 
 	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
 		errx(EXIT_FAILURE, "unknown keymap %d", format);
 
-	xkb_keymap_unref(seat->kb->keymap);
-	xkb_state_unref(seat->kb->state);
+	xkb_keymap_unref(keymap);
+	xkb_state_unref(xkb_state);
 
 	map_shm = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map_shm == MAP_FAILED)
 		errx(EXIT_FAILURE, "mmap keymap shm failed");
 
-	seat->kb->keymap = xkb_keymap_new_from_buffer(xkb_ctx,
+	keymap = xkb_keymap_new_from_buffer(xkb_ctx,
 		map_shm, size, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	munmap(map_shm, size);
 	close(fd);
 
-	seat->kb->state = xkb_state_new(seat->kb->keymap);
+	xkb_state = xkb_state_new(keymap);
 }
 
 static void
 keyboard_handle_key(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, uint32_t time, uint32_t key, uint32_t key_state)
 {
-	Seat *seat = data;
-
 	keyboard_keypress((enum wl_keyboard_key_state)key_state,
-		xkb_state_key_get_one_sym(seat->kb->state, key + 8));
+		xkb_state_key_get_one_sym(xkb_state, key + 8));
 }
 
 static void
@@ -266,9 +254,7 @@ keyboard_handle_modifiers(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, uint32_t mods_depressed,
 		uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
-	Seat *seat = data;
-
-	xkb_state_update_mask(seat->kb->state, mods_depressed, mods_latched,
+	xkb_state_update_mask(xkb_state, mods_depressed, mods_latched,
 			mods_locked, 0, 0, group);
 }
 
@@ -297,41 +283,28 @@ static const struct wl_pointer_listener pointer_listener = {
 };
 
 static void
-seat_capabilities(void *data, struct wl_seat *wl_seat,
+seat_capabilities(void *data, struct wl_seat *seat,
 		enum wl_seat_capability caps)
 {
-	Seat *seat = data;
+	if (pointer) {
+		wl_pointer_release(pointer);
+		pointer = NULL;
+	}
+
+	if (keyboard) {
+		wl_keyboard_release(keyboard);
+		keyboard = NULL;
+	}
 
 	if (caps & WL_SEAT_CAPABILITY_POINTER) {
-		seat->pointer = wl_seat_get_pointer(wl_seat);
-		wl_pointer_add_listener(seat->pointer, &pointer_listener, NULL);
+		pointer = wl_seat_get_pointer(seat);
+		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
 	}
 
 	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
-		seat->kb = calloc(1, sizeof(Keyboard));
-		seat->kb->keyboard = wl_seat_get_keyboard(seat->seat);
-		wl_keyboard_add_listener(seat->kb->keyboard, &keyboard_listener, seat);
+		keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(keyboard, &keyboard_listener, seat);
 	}
-}
-
-static void
-seat_destroy(Seat *seat)
-{
-	wl_keyboard_destroy(seat->kb->keyboard);
-	xkb_keymap_unref(seat->kb->keymap);
-	xkb_state_unref(seat->kb->state);
-	free(seat->kb);
-	wl_seat_destroy(seat->seat);
-	free(seat);
-}
-
-static void
-seats_destroy(void)
-{
-	Seat *seat, *tmp;
-
-	wl_list_for_each_safe(seat, tmp, &seats, link)
-		seat_destroy(seat);
 }
 
 static const struct wl_seat_listener seat_listener = {
@@ -354,10 +327,8 @@ registry_global(void *data, struct wl_registry *registry,
 		lock_manager = wl_registry_bind(
 			registry, name, &ext_session_lock_manager_v1_interface, 1);
 	else if (!strcmp(interface, wl_seat_interface.name)) {
-		Seat *seat = calloc(1, sizeof(Seat));
-		seat->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
-		wl_seat_add_listener(seat->seat, &seat_listener, seat);
-		wl_list_insert(&seats, &seat->link);
+		seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
+		wl_seat_add_listener(seat, &seat_listener, NULL);
 	} else if (!strcmp(interface, wl_output_interface.name)) {
 		Output *output = calloc(1, sizeof(Output));
 		output->wl_name = name;
@@ -437,7 +408,6 @@ setup(void)
 {
 	Output *output;
 
-	wl_list_init(&seats);
 	wl_list_init(&outputs);
 
 	if (!(display = wl_display_connect(NULL)))
@@ -471,8 +441,12 @@ cleanup(void)
 	ext_session_lock_manager_v1_destroy(lock_manager);
 	wp_single_pixel_buffer_manager_v1_destroy(buf_manager);
 	wp_viewporter_destroy(viewporter);
-	seats_destroy();
 	xkb_context_unref(xkb_ctx);
+	wl_pointer_destroy(pointer);
+	wl_keyboard_destroy(keyboard);
+	xkb_keymap_unref(keymap);
+	xkb_state_unref(xkb_state);
+	wl_seat_destroy(seat);
 	wl_compositor_destroy(compositor);
 	wl_registry_destroy(registry);
 	wl_display_disconnect(display);
