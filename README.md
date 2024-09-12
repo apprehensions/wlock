@@ -27,7 +27,7 @@ make install
 
 ## Usage
 
-Run `wlock`.
+Run `wlock`, to get out of it, enter your password.
 
 See the wlock usage (`wlock -h`) for more details.
 
