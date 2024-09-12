@@ -1,3 +1,4 @@
 wlock
 *.o
 *-protocol.*
+config.h

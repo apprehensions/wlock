@@ -52,8 +52,6 @@ typedef struct {
 	struct wl_list link;
 } Output;
 
-
-
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -71,17 +69,14 @@ static bool locked, running;
 
 enum input_state { INIT, FAILED, INPUT, INPUT_ALT } input_state = INIT;
 
-static Clr colorname[4] = {
-	[INIT]      = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
-	[INPUT]     = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
-	[INPUT_ALT] = { 0x00000000, 0x50505050, 0x70707070 }, /* during input, second color */
-	[FAILED]    = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
-};
+#include "config.h"
 
 static void
 noop()
 {
-	// :3c
+	/* 
+	 * :3c
+	 */
 }
 
 static Clr
@@ -226,7 +221,7 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 	}
 
 	input_state = pw.len ? pw.len % 2 ? INPUT : INPUT_ALT :
-	              input_state == FAILED ? FAILED : INIT;
+	              (input_state == FAILED || failonclear) ? FAILED : INIT;
 
 	outputs_frame();
 }

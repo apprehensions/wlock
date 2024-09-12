@@ -14,14 +14,19 @@ WLCPPFLAGS = -DVERSION=\"$(VERSION)\"
 WLCFLAGS   = -pedantic -Wall $(INCS) $(WLCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
 LDLIBS     = $(LIBS) -lcrypt
 
-SRC = wlock.c single-pixel-buffer-v1-protocol.c ext-session-lock-v1-protocol.c viewporter-protocol.c
-OBJ = $(SRC:.c=.o)
+PROTO = single-pixel-buffer-v1-protocol.h ext-session-lock-v1-protocol.h viewporter-protocol.h
+SRC = wlock.c $(PROTO:.h=.c)
+OBJ = $(SRC:.c=.o) 
 
 all: wlock
+
 .c.o:
 	$(CC) -o $@ $(WLCFLAGS) -c $<
 
-wlock.o: single-pixel-buffer-v1-protocol.h ext-session-lock-v1-protocol.h viewporter-protocol.h
+$(OBJ): config.h $(PROTO:.c=.h)
+
+config.h:
+	cp config.def.h $@
 
 wlock: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)
