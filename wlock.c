@@ -34,26 +34,26 @@ typedef struct {
 	struct wl_list link;
 } Output;
 
-static struct wl_display *display;
-static struct wl_registry *registry;
-static struct wl_seat *seat;
-static struct wl_compositor *compositor;
-static struct wp_viewporter *viewporter;
-static struct ext_session_lock_v1 *lock;
-static struct ext_session_lock_manager_v1 *lock_manager;
-static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
-static struct wl_pointer *pointer;
-static struct wl_keyboard *keyboard;
-static struct xkb_context *xkb_ctx;
-static struct xkb_state *xkb_state;
-static struct xkb_keymap *keymap;
-
-static struct wl_list outputs;
-
 static struct {
 	char input[256];
 	int len;
 } pw;
+
+static struct wl_display *display;
+static struct xkb_context *xkb_ctx;
+static struct wl_registry *registry;
+static struct wl_compositor *compositor;
+static struct wp_viewporter *viewporter;
+static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
+static struct ext_session_lock_manager_v1 *lock_manager;
+static struct wl_seat *seat;
+static struct ext_session_lock_v1 *lock;
+static struct wl_pointer *pointer;
+static struct wl_keyboard *keyboard;
+static struct xkb_keymap *keymap;
+static struct xkb_state *xkb_state;
+
+static struct wl_list outputs;
 
 static char *hash;
 static bool locked, running;
@@ -318,11 +318,11 @@ registry_global(void *data, struct wl_registry *registry,
 {
 	if (!strcmp(interface, wl_compositor_interface.name))
 		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+	else if (!strcmp(interface, wp_viewporter_interface.name))
+		viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
 	else if (!strcmp(interface, wp_single_pixel_buffer_manager_v1_interface.name))
 		buf_manager = wl_registry_bind(
 			registry, name, &wp_single_pixel_buffer_manager_v1_interface, 1);
-	else if (!strcmp(interface, wp_viewporter_interface.name))
-		viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
 	else if (!strcmp(interface, ext_session_lock_manager_v1_interface.name))
 		lock_manager = wl_registry_bind(
 			registry, name, &ext_session_lock_manager_v1_interface, 1);
@@ -438,17 +438,17 @@ cleanup(void)
 	wl_display_roundtrip(display);
 
 	outputs_destroy();
+	xkb_state_unref(xkb_state);
+	xkb_keymap_unref(keymap);
+	wl_keyboard_destroy(keyboard);
+	wl_pointer_destroy(pointer);
+	wl_seat_destroy(seat);
 	ext_session_lock_manager_v1_destroy(lock_manager);
 	wp_single_pixel_buffer_manager_v1_destroy(buf_manager);
 	wp_viewporter_destroy(viewporter);
-	xkb_context_unref(xkb_ctx);
-	wl_pointer_destroy(pointer);
-	wl_keyboard_destroy(keyboard);
-	xkb_keymap_unref(keymap);
-	xkb_state_unref(xkb_state);
-	wl_seat_destroy(seat);
 	wl_compositor_destroy(compositor);
 	wl_registry_destroy(registry);
+	xkb_context_unref(xkb_ctx);
 	wl_display_disconnect(display);
 }
 
